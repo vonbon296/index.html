@@ -1,0 +1,446 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>極淑芬冰橋練習 By澄澄</title>
+    <style>
+        body { 
+            background-color: #0c0d12; 
+            color: #f4f4f5; 
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; 
+            display: flex; 
+            flex-direction: column; 
+            align-items: center; 
+            justify-content: center; 
+            min-height: 100vh; 
+            margin: 0; 
+            user-select: none;
+            padding: 20px;
+        }
+        .container { 
+            display: flex; 
+            flex-direction: row; 
+            gap: 24px; 
+            align-items: flex-start; 
+            background-color: #13151a;
+            padding: 20px;
+            border-radius: 12px;
+            border: 1px solid #23262f;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.5);
+        }
+        .sidebar { 
+            background-color: #181a21; border: 1px solid #282b3d; border-radius: 8px; 
+            padding: 24px; width: 260px; display: flex; flex-direction: column; gap: 20px;
+        }
+        label { font-size: 13px; color: #71717a; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; }
+        select { 
+            background-color: #0d0e12; color: #f4f4f5; border: 1px solid #3f3f46; 
+            padding: 12px; border-radius: 6px; font-size: 15px; cursor: pointer; outline: none;
+            width: 100%; transition: border-color 0.2s;
+        }
+        select:focus { border-color: #3b82f6; }
+        
+        .status-panel { 
+            background-color: #0d0e12; border: 1px solid #27272a;
+            border-left: 4px solid #3b82f6; border-radius: 6px; padding: 16px; 
+        }
+        .status-panel.success { border-left-color: #22c55e; }
+        .status-panel.danger { border-left-color: #ef4444; }
+        .status-panel.info { border-left-color: #eab308; }
+
+        .status-title { font-size: 12px; color: #71717a; margin-bottom: 6px; font-weight: bold; }
+        .status-text { font-size: 24px; font-weight: 800; letter-spacing: -0.5px; }
+        .status-desc { font-size: 13px; margin-top: 8px; color: #a1a1aa; line-height: 1.4; }
+        
+        .btn-group { display: flex; gap: 12px; }
+        button {
+            flex: 1; padding: 12px; border: none; border-radius: 6px; 
+            font-size: 15px; font-weight: bold; cursor: pointer; transition: background-color 0.2s, transform 0.1s;
+        }
+        button:active { transform: scale(0.98); }
+        .btn-start { background-color: #2563eb; color: white; }
+        .btn-start:hover { background-color: #1d4ed8; }
+        .btn-reset { background-color: #27272a; color: #e4e4e7; border: 1px solid #3f3f46; }
+        .btn-reset:hover { background-color: #18181b; }
+        
+        canvas { border: 1px solid #23262f; background-color: #07080a; border-radius: 6px; }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+       <div style="position: relative; display: inline-block;">
+    
+    <canvas id="gameCanvas" width="900" height="750"></canvas>
+
+    <img src="map.png" style="position: absolute; top: 550px; left: 980px; width: 230px; height: 180px; pointer-events: none; border-radius: 4px;">
+
+</div>
+
+        <div class="sidebar">
+            <div>
+                <label>控制路線</label>
+                <select id="charSelect" onchange="changeControlledChar()">
+                    <option value="MT">MT</option>
+                    <option value="ST">ST</option>
+                    <option value="H1">H1</option>
+                    <option value="H2">H2</option>
+                    <option value="D1">D1</option>
+                    <option value="D2">D2</option>
+                    <option value="D3">D3</option>
+                    <option value="D4">D4</option>
+                </select>
+            </div>
+
+            <div id="statusBox" class="status-panel">
+                <div class="status-title">目前狀態</div>
+                <div id="statusText" class="status-text" style="color: #3b82f6;">準備就緒</div>
+                <div id="statusDesc" class="status-desc">請選好要控制的角色，並按下開始。</div>
+            </div>
+
+            <div class="btn-group">
+                <button class="btn-start" onclick="startGame()">開始</button>
+                <button class="btn-reset" onclick="resetGame()">重置</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+
+        // 地形定義
+        const platforms = [
+            { id: 'plat-w', x: 250, y: 350, width: 120, height: 500 }, 
+            { id: 'plat-c', x: 450, y: 410, width: 60,  height: 320 }, 
+            { id: 'plat-e', x: 650, y: 350, width: 120, height: 500 }
+        ];
+
+        let bridges = [
+            { id: 'br-nw', x: 365, y: 300, width: 110, height: 50, isBroken: false }, 
+            { id: 'br-ne', x: 535, y: 300, width: 110, height: 50, isBroken: false }, 
+            { id: 'br-sw', x: 365, y: 480, width: 110, height: 50, isBroken: false }, 
+            { id: 'br-se', x: 535, y: 480, width: 110, height: 50, isBroken: false }  
+        ];
+
+        const icePillars = [
+            { id: 1, number: '1', x: 250, y: 650 }, { id: 2, number: '2', x: 365, y: 650 }, 
+            { id: 3, number: '3', x: 535, y: 650 }, { id: 4, number: '4', x: 650, y: 650 }, 
+            { id: 5, number: '5', x: 130, y: 300 }, { id: 7, number: '7', x: 130, y: 480 }, 
+            { id: 6, number: '6', x: 770, y: 300 }, { id: 8, number: '8', x: 770, y: 480 }  
+        ];
+
+        let partyMembers = [
+            { id: 'MT', x: 450, y: 270, targetX: 450, targetY: 270, color: '#3182ce', isDead: false, rollNum: null, wave: 0, pathIndex: 0 },
+            { id: 'ST', x: 450, y: 310, targetX: 450, targetY: 310, color: '#3182ce', isDead: false, rollNum: null, wave: 0, pathIndex: 0 },
+            { id: 'H1', x: 450, y: 350, targetX: 450, targetY: 350, color: '#38a169', isDead: false, rollNum: null, wave: 0, pathIndex: 0 },
+            { id: 'H2', x: 450, y: 390, targetX: 450, targetY: 390, color: '#38a169', isDead: false, rollNum: null, wave: 0, pathIndex: 0 },
+            { id: 'D1', x: 450, y: 430, targetX: 450, targetY: 430, color: '#e53e3e', isDead: false, rollNum: null, wave: 0, pathIndex: 0 },
+            { id: 'D2', x: 450, y: 470, targetX: 450, targetY: 470, color: '#e53e3e', isDead: false, rollNum: null, wave: 0, pathIndex: 0 },
+            { id: 'D3', x: 450, y: 510, targetX: 450, targetY: 510, color: '#e53e3e', isDead: false, rollNum: null, wave: 0, pathIndex: 0 },
+            { id: 'D4', x: 450, y: 550, targetX: 450, targetY: 550, color: '#e53e3e', isDead: false, rollNum: null, wave: 0, pathIndex: 0 }
+        ];
+
+        let controlledId = 'MT';
+        let gameState = 'idle'; 
+        let timer = 0;
+        let showAoE = false;
+        let failureReason = "";
+
+        // 🗺️ 【精準尋路路徑修正 - 8號與6號移至外側點】
+        const routingData = {
+            // [第一波次]
+            1: [ { x: 450, y: 300 }, { x: 535, y: 300 }, { x: 610, y: 300 }, { x: 610, y: 130 } ], 
+            4: [ { x: 450, y: 300 }, { x: 365, y: 300 }, { x: 290, y: 300 }, { x: 290, y: 130 } ], 
+            2: [ { x: 450, y: 480 }, { x: 535, y: 480 }, { x: 690, y: 480 }, { x: 690, y: 130 } ], 
+            3: [ { x: 450, y: 480 }, { x: 365, y: 480 }, { x: 210, y: 480 }, { x: 210, y: 130 } ], 
+
+            // [第二波次] 
+            5: [ { x: 450, y: 480 }, { x: 535, y: 480 }, { x: 690, y: 480 }, { x: 690, y: 570 } ], 
+            6: [ { x: 450, y: 480 }, { x: 365, y: 480 }, { x: 210, y: 480 }, { x: 210, y: 570 } ], // 6號配合修正拉到外側(X:210)
+            7: [ { x: 450, y: 300 }, { x: 535, y: 300 }, { x: 690, y: 300 }, { x: 690, y: 250 } ], 
+            8: [ { x: 450, y: 300 }, { x: 365, y: 300 }, { x: 210, y: 300 }, { x: 210, y: 250 } ]  // ✨ 8號修正：過橋後直走到底靠左外側(X:210)，再往上微調就位！
+        };
+
+        function changeControlledChar() {
+            controlledId = document.getElementById('charSelect').value;
+        }
+
+        canvas.addEventListener('mousedown', (e) => {
+            if (gameState === 'finished') return;
+            const rect = canvas.getBoundingClientRect();
+            const clickX = e.clientX - rect.left;
+            const clickY = e.clientY - rect.top;
+
+            let char = partyMembers.find(m => m.id === controlledId);
+            if (char && !char.isDead) {
+                char.targetX = clickX;
+                char.targetY = clickY;
+            }
+        });
+
+        function startGame() {
+            if (gameState !== 'idle') return;
+            gameState = 'active';
+            timer = 12 * 60; 
+            showAoE = false;
+            failureReason = "";
+
+            let wave1Nums = [1, 2, 3, 4].sort(() => Math.random() - 0.5);
+            let wave2Nums = [5, 6, 7, 8].sort(() => Math.random() - 0.5);
+            let shuffedMembers = [...partyMembers].sort(() => Math.random() - 0.5);
+            
+            shuffedMembers.forEach((m, idx) => {
+                m.pathIndex = 0; 
+                if (idx < 4) {
+                    m.rollNum = wave1Nums[idx]; m.wave = 1;
+                } else {
+                    m.rollNum = wave2Nums[idx - 4]; m.wave = 2;
+                }
+            });
+
+            partyMembers.forEach(m => {
+                if (m.id !== controlledId && routingData[m.rollNum]) {
+                    m.targetX = routingData[m.rollNum][0].x;
+                    m.targetY = routingData[m.rollNum][0].y;
+                }
+            });
+
+            updateUI('進行中', '#eab308', '機制開始！1-4號點名，原地倒數3秒中。', 'info');
+        }
+
+        function resetGame() {
+            gameState = 'idle'; timer = 0; showAoE = false; failureReason = "";
+            bridges.forEach(b => b.isBroken = false);
+            partyMembers.forEach((m, idx) => {
+                m.x = 450; m.y = 270 + idx * 40;
+                m.targetX = m.x; m.targetY = m.y;
+                m.isDead = false; m.rollNum = null; m.wave = 0; m.pathIndex = 0;
+            });
+            updateUI('準備就緒', '#3b82f6', '請選好要控制的角色，並按下開始。', 'default');
+        }
+
+        function updateUI(text, color, desc, type) {
+            const box = document.getElementById('statusBox');
+            const t = document.getElementById('statusText');
+            const d = document.getElementById('statusDesc');
+            t.innerText = text; t.style.color = color; d.innerText = desc;
+            box.className = 'status-panel';
+            if (type === 'success') box.classList.add('success');
+            if (type === 'danger') box.classList.add('danger');
+            if (type === 'info') box.classList.add('info');
+        }
+
+        function getInWhatTerrain(x, y) {
+            for (let p of platforms) {
+                if (x >= p.x - p.width/2 && x <= p.x + p.width/2 && y >= p.y - p.height/2 && y <= p.y + p.height/2) return { type: 'platform', id: p.id };
+            }
+            for (let b of bridges) {
+                if (x >= b.x - b.width/2 && x <= b.x + b.width/2 && y >= b.y - b.height/2 && y <= b.y + b.height/2) return { type: 'bridge', id: b.id, bridgeObj: b };
+            }
+            return { type: 'void' }; 
+        }
+
+        function updateGame() {
+            if (gameState === 'active') {
+                timer--;
+                let seconds = Math.ceil(timer / 60);
+
+                if (timer === 9 * 60) {
+                    updateUI('進行中', '#eab308', '【1-4號出發！】同時5-8號被點名，原地倒數3秒。', 'info');
+                } else if (timer === 6 * 60) {
+                    updateUI('進行中', '#eab308', '【5-8號出發！】衝向兩側大平台就位。', 'info');
+                } else if (timer > 0 && timer !== 9 * 60 && timer !== 6 * 60) {
+                    updateUI('進行中', '#eab308', `機制判定剩餘：${seconds} 秒`, 'info');
+                }
+
+                if (timer <= 0) {
+                    gameState = 'finished'; showAoE = true;
+                    resolveMechanism(); return;
+                }
+            }
+
+            partyMembers.forEach(m => {
+                if (m.isDead) return;
+
+                let canMove = false;
+                if (m.id === controlledId) {
+                    canMove = true;
+                } else if (gameState === 'active') {
+                    if (m.wave === 1 && timer <= 9 * 60) canMove = true;  
+                    if (m.wave === 2 && timer <= 6 * 60) canMove = true;  
+                }
+
+                if (canMove) {
+                    let dx = m.targetX - m.x; let dy = m.targetY - m.y;
+                    let dist = Math.sqrt(dx*dx + dy*dy);
+                    
+                    // 🏃‍♂️ 速度同步調整：玩家速度調降至 2.0，與 NPC 完全一模一樣，防止偷跑！
+                    let speed = 2.0;
+
+                    if (dist > speed) { 
+                        m.x += (dx/dist)*speed; m.y += (dy/dist)*speed; 
+                    } else { 
+                        m.x = m.targetX; m.y = m.targetY; 
+
+                        if (m.id !== controlledId && gameState === 'active') {
+                            let nodes = routingData[m.rollNum];
+                            if (nodes && m.pathIndex < nodes.length - 1) {
+                                m.pathIndex++;
+                                m.targetX = nodes[m.pathIndex].x;
+                                m.targetY = nodes[m.pathIndex].y;
+                            }
+                        }
+                    }
+                }
+
+                // 死亡判定
+                let loc = getInWhatTerrain(m.x, m.y);
+                if (loc.type === 'void' || (loc.type === 'bridge' && loc.bridgeObj.isBroken)) {
+                    m.isDead = true;
+                    if (m.id === controlledId) {
+                        gameState = 'finished'; failureReason = "你跌落至黑色區域死亡";
+                        updateUI('失敗', '#ef4444', failureReason, 'danger');
+                    }
+                }
+            });
+
+            // 雙人踩橋碎裂判定
+            bridges.forEach(b => {
+                if (b.isBroken) return;
+                let onBridge = partyMembers.filter(m => !m.isDead && getInWhatTerrain(m.x, m.y).id === b.id);
+                if (onBridge.length >= 2) {
+                    b.isBroken = true;
+                    onBridge.forEach(m => {
+                        m.isDead = true;
+                        if (m.id === controlledId) {
+                            gameState = 'finished'; failureReason = "雙人同時在橋上，冰橋塌陷全滅！";
+                            updateUI('失敗', '#ef4444', failureReason, 'danger');
+                        }
+                    });
+                }
+            });
+        }
+
+        function resolveMechanism() {
+            let controlledChar = partyMembers.find(m => m.id === controlledId);
+            if (controlledChar.isDead) {
+                if(!failureReason) failureReason = "你的角色已死亡。";
+                updateUI('失敗', '#ef4444', failureReason, 'danger'); return;
+            }
+
+            let num = controlledChar.rollNum;
+            let nodes = routingData[num];
+            let finalTarget = nodes[nodes.length - 1];
+            let distToTarget = Math.sqrt((controlledChar.x - finalTarget.x)**2 + (controlledChar.y - finalTarget.y)**2);
+
+            if (distToTarget < 55) {
+                updateUI('成功', '#22c55e', `完美跑位！你成功引導了 ${num} 號冰柱連線！`, 'success');
+            } else {
+                controlledChar.isDead = true;
+                updateUI('失敗', '#ef4444', `你被爆炸 AoE 擊中（${num} 號未在指定點就位）`, 'danger');
+            }
+        }
+
+        function getPillarForNum(num) {
+            return icePillars.find(p => p.id === num);
+        }
+
+        function drawImageIcePillar(x, y, number) {
+            ctx.save(); ctx.translate(x, y);
+            const g = ctx.createLinearGradient(0, -40, 0, 40);
+            g.addColorStop(0, '#a5f3fc'); g.addColorStop(0.5, '#0284c7'); g.addColorStop(1, '#a5f3fc');   
+            ctx.fillStyle = g; ctx.strokeStyle = '#e0f2fe'; ctx.lineWidth = 1.5;
+            ctx.beginPath(); ctx.moveTo(0, -40); ctx.lineTo(12, -15); ctx.lineTo(8, 0); ctx.lineTo(12, 15); ctx.lineTo(0, 40); ctx.lineTo(-12, 15); ctx.lineTo(-8, 0); ctx.lineTo(-12, -15);
+            ctx.closePath(); ctx.fill(); ctx.stroke();
+            ctx.beginPath(); ctx.arc(0, 0, 16, 0, Math.PI * 2); ctx.fillStyle = '#111318'; ctx.fill(); ctx.strokeStyle = '#face5c'; ctx.lineWidth = 2.5; ctx.stroke();
+            ctx.fillStyle = '#face5c'; ctx.font = 'bold 18px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(number, 0, 0);
+            ctx.restore();
+        }
+
+        function draw() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            // 1. 冰橋
+            bridges.forEach(b => {
+                if (b.isBroken) {
+                    ctx.fillStyle = 'rgba(239, 68, 68, 0.12)'; ctx.fillRect(b.x - b.width/2, b.y - b.height/2, b.width, b.height);
+                    ctx.strokeStyle = '#ef4444'; ctx.lineWidth = 1.5; ctx.setLineDash([4, 4]); ctx.strokeRect(b.x - b.width/2, b.y - b.height/2, b.width, b.height); ctx.setLineDash([]);
+                    ctx.fillStyle = '#ef4444'; ctx.font = '12px sans-serif'; ctx.textAlign = 'center'; ctx.fillText('CRACKED', b.x, b.y + 4);
+                } else {
+                    ctx.fillStyle = '#233549'; ctx.fillRect(b.x - b.width/2, b.y - b.height/2, b.width, b.height);
+                    ctx.strokeStyle = '#4b729f'; ctx.lineWidth = 1.5; ctx.strokeRect(b.x - b.width/2, b.y - b.height/2, b.width, b.height);
+                }
+            });
+
+            // 2. 平台
+            platforms.forEach(p => {
+                ctx.fillStyle = '#161922'; ctx.fillRect(p.x - p.width/2, p.y - p.height/2, p.width, p.height);
+                ctx.strokeStyle = '#2d3245'; ctx.lineWidth = 2; ctx.strokeRect(p.x - p.width/2, p.y - p.height/2, p.width, p.height);
+            });
+
+            // 3. 連線與大爆炸
+            if (gameState === 'active' || gameState === 'finished') {
+                partyMembers.forEach(m => {
+                    if (m.isDead || !m.rollNum) return;
+                    if (m.wave === 2 && timer > 9 * 60) return; 
+
+                    let p = getPillarForNum(m.rollNum);
+                    if (!p) return;
+
+                    if (showAoE) {
+                        ctx.save();
+                        ctx.strokeStyle = 'rgba(249, 115, 22, 0.4)'; ctx.lineWidth = 40;
+                        ctx.beginPath(); ctx.moveTo(p.x, p.y); ctx.lineTo(m.x, m.y); ctx.stroke();
+                        ctx.strokeStyle = 'rgba(253, 224, 71, 0.7)'; ctx.lineWidth = 12;
+                        ctx.beginPath(); ctx.moveTo(p.x, p.y); ctx.lineTo(m.x, m.y); ctx.stroke();
+                        ctx.restore();
+                    } else {
+                        ctx.save();
+                        ctx.strokeStyle = 'rgba(168, 85, 247, 0.7)'; ctx.lineWidth = 2;
+                        ctx.shadowBlur = 6; ctx.shadowColor = '#c084fc';
+                        ctx.setLineDash([4, 4]);
+                        ctx.beginPath(); ctx.moveTo(p.x, p.y); ctx.lineTo(m.x, m.y); ctx.stroke();
+                        ctx.restore();
+                    }
+                });
+            }
+
+            // 4. 冰柱
+            icePillars.forEach(p => drawImageIcePillar(p.x, p.y, p.number));
+
+            // 5. 畫角色
+            partyMembers.forEach(member => {
+                ctx.beginPath(); ctx.arc(member.x, member.y, 14, 0, Math.PI * 2);
+                ctx.fillStyle = member.isDead ? '#3f3f46' : member.color; ctx.fill();
+                
+                if (member.id === controlledId) {
+                    ctx.strokeStyle = '#3b82f6'; ctx.lineWidth = 3;
+                } else {
+                    ctx.strokeStyle = member.isDead ? '#ef4444' : '#fff'; ctx.lineWidth = 1;
+                }
+                ctx.stroke();
+                
+                ctx.fillStyle = '#fff'; ctx.font = 'bold 11px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+                ctx.fillText(member.id, member.x, member.y + 1);
+
+                let isWaveActive = (member.wave === 1) || (member.wave === 2 && timer <= 9 * 60);
+                if (member.rollNum && !member.isDead && isWaveActive) {
+                    ctx.beginPath(); ctx.arc(member.x, member.y - 24, 9, 0, Math.PI * 2);
+                    ctx.fillStyle = '#face5c'; ctx.fill();
+                    ctx.fillStyle = '#000'; ctx.font = 'bold 11px sans-serif';
+                    ctx.fillText(member.rollNum, member.x, member.y - 24);
+                }
+            });
+        }
+
+        function gameLoop() {
+            updateGame();
+            draw();
+            requestAnimationFrame(gameLoop);
+        }
+        gameLoop();
+    </script>
+</body>
+</html>
